@@ -87,12 +87,6 @@ const Dashboard: React.FC = () => {
             console.log('Column names after mapping:', columnNames);
             console.log('First data row (raw):', dataRows[0]);
             
-            // Get cell range to access formatted values
-            const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-            
-            // Track which rows we've processed after filtering
-            let processedRowCount = 0;
-            
             // Convert array rows to objects, using formatted cell values where available
             const jsonData = dataRows
               .map((row, rowIdx) => {
@@ -139,7 +133,6 @@ const Dashboard: React.FC = () => {
                   }
                 });
                 
-                processedRowCount++;
                 return obj;
               })
               .filter(row => row !== null) as ExcelRow[];
