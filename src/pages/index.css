@@ -332,6 +332,7 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 2rem;
   margin-top: 2rem;
+  margin-bottom: 2rem;
 }
 
 .summary-stat {
@@ -353,6 +354,41 @@
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.download-all-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem 2rem;
+  width: 100%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+  margin-top: 1rem;
+}
+
+.download-all-btn:hover {
+  background: linear-gradient(135deg, #5a67d8, #6b46c1);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 25px rgba(102, 126, 234, 0.5);
+}
+
+.download-all-btn:active {
+  transform: translateY(0);
+}
+
+.download-all-btn svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2.5;
 }
 
 .canceled-color {
@@ -492,11 +528,52 @@
   border-bottom: 3px solid #667eea;
 }
 
+.results-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
 .results-header h2 {
   font-size: 1.8rem;
   color: #333;
   font-weight: 700;
-  margin-bottom: 0.75rem;
+  margin: 0;
+}
+
+.download-excel-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #38a169, #48bb78);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(56, 161, 105, 0.3);
+}
+
+.download-excel-btn:hover {
+  background: linear-gradient(135deg, #2f855a, #38a169);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(56, 161, 105, 0.4);
+}
+
+.download-excel-btn:active {
+  transform: translateY(0);
+}
+
+.download-excel-btn svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.5;
 }
 
 .results-description {
@@ -612,6 +689,120 @@
   font-size: 0.75rem;
   color: #d32f2f;
   opacity: 0.7;
+}
+
+/* Side-by-side comparison styling */
+.comparison-table-sidebyside .comparison-header {
+  background: linear-gradient(135deg, #764ba2, #667eea) !important;
+  text-align: center;
+  border-left: 2px solid rgba(255, 255, 255, 0.3);
+  padding: 1rem 0.5rem;
+}
+
+.comparison-table-sidebyside .subheader {
+  background: linear-gradient(135deg, #8b5fc7, #7c94f5) !important;
+}
+
+.comparison-table-sidebyside .subheader th {
+  padding: 0.8rem 0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.comparison-table-sidebyside .old-subheader {
+  background: rgba(255, 193, 7, 0.2) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.comparison-table-sidebyside .new-subheader {
+  background: rgba(23, 162, 184, 0.2) !important;
+  border-right: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.comparison-table-sidebyside .seq-column,
+.comparison-table-sidebyside .description-column,
+.comparison-table-sidebyside .code-column {
+  background: rgba(102, 126, 234, 0.15) !important;
+}
+
+.comparison-table-sidebyside tbody td {
+  text-align: center;
+  padding: 1rem 0.8rem;
+}
+
+.comparison-table-sidebyside tbody td:nth-child(1),
+.comparison-table-sidebyside tbody td:nth-child(2),
+.comparison-table-sidebyside tbody td:nth-child(3) {
+  text-align: left;
+  background: rgba(102, 126, 234, 0.03);
+  font-weight: 500;
+}
+
+.cell-changed-old {
+  background: linear-gradient(135deg, #fff3cd, #ffeaa7) !important;
+  font-weight: 700;
+  color: #856404;
+  border-right: 1px solid #ffc107;
+  position: relative;
+}
+
+.cell-changed-old::before {
+  content: '◀';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.7rem;
+  color: #856404;
+  opacity: 0.6;
+}
+
+.cell-changed-new {
+  background: linear-gradient(135deg, #d1ecf1, #a8e6f7) !important;
+  font-weight: 700;
+  color: #0c5460;
+  border-right: 2px solid #17a2b8;
+  position: relative;
+}
+
+.cell-changed-new::before {
+  content: '▶';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.7rem;
+  color: #0c5460;
+  opacity: 0.6;
+}
+
+/* Ideal Price Column (Notes) */
+.ideal-price-column {
+  background: rgba(255, 193, 7, 0.1) !important;
+  font-style: italic;
+  color: #856404;
+  min-width: 150px;
+  font-weight: 500;
+}
+
+.ideal-price-cell {
+  background: rgba(255, 193, 7, 0.05) !important;
+  text-align: center !important;
+}
+
+.ideal-price-note {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.8rem;
+  background: linear-gradient(135deg, #fff9e6, #fff3cd);
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #856404;
+  box-shadow: 0 2px 4px rgba(255, 193, 7, 0.2);
+  white-space: nowrap;
 }
 
 .no-data {

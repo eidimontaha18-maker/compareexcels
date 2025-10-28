@@ -36,12 +36,12 @@ const Dashboard: React.FC = () => {
       reader.onload = (e) => {
         try {
           const data = e.target?.result;
-          const workbook = XLSX.read(data, { type: 'binary' });
+          const workbook = XLSX.read(data, { type: 'binary', cellText: false, cellDates: true });
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
           
           // First read all data as arrays to find header row and handle columns without headers
-          const allData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as unknown[][];
+          const allData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false }) as unknown[][];
           
           // Find which row has the headers (Seq., Description, etc.)
           let headerRowIndex = -1;
@@ -87,28 +87,62 @@ const Dashboard: React.FC = () => {
             console.log('Column names after mapping:', columnNames);
             console.log('First data row (raw):', dataRows[0]);
             
-            // Convert array rows to objects
+            // Get cell range to access formatted values
+            const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+            
+            // Track which rows we've processed after filtering
+            let processedRowCount = 0;
+            
+            // Convert array rows to objects, using formatted cell values where available
             const jsonData = dataRows
-              .filter(row => {
-                // Skip empty rows
+              .map((row, rowIdx) => {
+                // Skip empty rows but track their original position
                 const hasData = (row as unknown[]).some(cell => cell != null && String(cell).trim() !== '');
-                return hasData;
-              })
-              .map((row) => {
+                if (!hasData) return null;
+                
                 const obj: ExcelRow = {};
-                (row as unknown[]).forEach((cell, index) => {
-                  const colName = columnNames[index] || `Column${index}`;
-                  // Convert cell to appropriate type
-                  if (cell == null || cell === '') {
+                // Calculate actual Excel row number (0-indexed in XLSX)
+                // headerRowIndex is the header position in allData array (0-indexed)
+                // rowIdx is the position in dataRows array (which starts after header)
+                const actualRowNum = headerRowIndex + 1 + rowIdx; // Excel row in 0-indexed
+                
+                (row as unknown[]).forEach((cell, colIdx) => {
+                  const colName = columnNames[colIdx] || `Column${colIdx}`;
+                  
+                  // Try to get the formatted cell value from the worksheet
+                  const cellAddress = XLSX.utils.encode_cell({ r: actualRowNum, c: colIdx });
+                  const cellObj = worksheet[cellAddress];
+                  
+                  // Use formatted value (w) if available, otherwise use the cell value
+                  let cellValue: string | number | boolean = '';
+                  if (cellObj) {
+                    if (cellObj.w !== undefined) {
+                      // Use formatted text value (preserves "25 PCS", "8 PCS", etc.)
+                      cellValue = cellObj.w;
+                    } else if (cellObj.v !== undefined) {
+                      cellValue = cellObj.v;
+                    }
+                  } else if (cell != null && cell !== '') {
+                    cellValue = cell as string | number | boolean;
+                  }
+                  
+                  // Debug log for Quantity column
+                  if (colName.toLowerCase().includes('qty') || colName.toLowerCase().includes('quantity')) {
+                    console.log(`Row ${actualRowNum + 1}, Col ${colIdx} (${colName}): cellAddress=${cellAddress}, cellObj.w="${cellObj?.w}", cellObj.v="${cellObj?.v}", cell="${cell}", final="${cellValue}"`);
+                  }
+                  
+                  // Always convert to string to preserve text like "25 PCS"
+                  if (cellValue == null || cellValue === '') {
                     obj[colName] = '';
-                  } else if (typeof cell === 'string' || typeof cell === 'number' || typeof cell === 'boolean') {
-                    obj[colName] = cell;
                   } else {
-                    obj[colName] = String(cell);
+                    obj[colName] = String(cellValue);
                   }
                 });
+                
+                processedRowCount++;
                 return obj;
-              });
+              })
+              .filter(row => row !== null) as ExcelRow[];
             
             console.log(`Read ${jsonData.length} data rows starting from row ${headerRowIndex + 1}`);
             console.log('Sample row:', jsonData[0]);
@@ -152,6 +186,9 @@ const Dashboard: React.FC = () => {
     // Check for Amount variations
     if (normalized.includes('amount') || normalized.includes('total')) return 'Amount';
     
+    // Check for Ideal Price variations
+    if (normalized.includes('ideal') && normalized.includes('price')) return 'Ideal_Price';
+    
     // Return original name if no match found
     return name;
   };
@@ -187,7 +224,7 @@ const Dashboard: React.FC = () => {
     
     // Try to extract numbers from strings like "8 PCS" -> "8" or "25 PCS" -> "25"
     // This handles the Quantity column which might be "8 PCS" or just "8"
-    const numberMatch = strValue.match(/^([\d.,]+)\s*(PCS|pcs)?$/i);
+    const numberMatch = strValue.match(/^([\d.,]+)\s*(PCS|PC|pcs|pc|SETS|sets|SET|set)?$/i);
     if (numberMatch) {
       const numStr = numberMatch[1].replace(/,/g, '');
       const numValue = parseFloat(numStr);
@@ -204,6 +241,220 @@ const Dashboard: React.FC = () => {
     }
     
     return strValue;
+  };
+
+  const extractQuantityWithUnit = (value: string | number | boolean | null | undefined): string => {
+    // Handle null, undefined, or empty
+    if (value == null || value === '') return '';
+    
+    // Convert to string and trim
+    let strValue = String(value).trim();
+    
+    // Handle empty after trim
+    if (strValue === '') return '';
+    
+    // Remove multiple spaces and normalize spacing
+    strValue = strValue.replace(/\s+/g, ' ');
+    
+    // Return as is - preserve PCS, PC, SETS, etc.
+    return strValue;
+  };
+
+  const downloadAsExcel = (data: ExcelRow[], filename: string, type: 'modified' | 'canceled' | 'unchanged') => {
+    const worksheetData: (string | number | boolean)[][] = [];
+
+    if (type === 'modified') {
+      // For modified items, create side-by-side comparison
+      const pairs: { old: ExcelRow; new: ExcelRow }[] = [];
+      for (let i = 0; i < data.length; i += 2) {
+        if (data[i]._status === 'OLD' && data[i + 1]?._status === 'NEW') {
+          pairs.push({ old: data[i], new: data[i + 1] });
+        }
+      }
+
+      // Create header rows
+      worksheetData.push([
+        'Seq.',
+        'Description',
+        'Code',
+        'Quantity (Old)',
+        'Quantity (New)',
+        'Unit Price (Old)',
+        'Unit Price (New)',
+        'Amount (Old)',
+        'Amount (New)',
+        'Notes'
+      ]);
+
+      // Add data rows
+      pairs.forEach(pair => {
+        worksheetData.push([
+          pair.old['Seq.'] ?? '',
+          pair.old.Description ?? '',
+          pair.old.Code ?? '',
+          extractQuantityWithUnit(pair.old.Quantity),
+          extractQuantityWithUnit(pair.new.Quantity),
+          pair.old['Unit Price'] ?? '',
+          pair.new['Unit Price'] ?? '',
+          pair.old.Amount ?? '',
+          pair.new.Amount ?? '',
+          pair.old.Ideal_Price ?? ''
+        ]);
+      });
+    } else {
+      // For canceled and unchanged items, use standard format
+      worksheetData.push(['Seq.', 'Description', 'Code', 'Quantity', 'Unit Price', 'Amount']);
+      
+      data.forEach(row => {
+        worksheetData.push([
+          row['Seq.'] ?? '',
+          row.Description ?? '',
+          row.Code ?? '',
+          extractQuantityWithUnit(row.Quantity),
+          row['Unit Price'] ?? '',
+          row.Amount ?? ''
+        ]);
+      });
+    }
+
+    // Create worksheet and workbook
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    
+    // Set column widths
+    const colWidths = type === 'modified' 
+      ? [
+          { wch: 8 },   // Seq
+          { wch: 30 },  // Description
+          { wch: 25 },  // Code
+          { wch: 12 },  // Qty Old
+          { wch: 12 },  // Qty New
+          { wch: 12 },  // Price Old
+          { wch: 12 },  // Price New
+          { wch: 12 },  // Amount Old
+          { wch: 12 },  // Amount New
+          { wch: 15 }   // Notes
+        ]
+      : [
+          { wch: 8 },   // Seq
+          { wch: 30 },  // Description
+          { wch: 25 },  // Code
+          { wch: 12 },  // Quantity
+          { wch: 12 },  // Unit Price
+          { wch: 12 }   // Amount
+        ];
+    
+    worksheet['!cols'] = colWidths;
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, type === 'modified' ? 'Modified Items' : type === 'canceled' ? 'Deleted Items' : 'Unchanged Items');
+
+    // Download the file
+    XLSX.writeFile(workbook, filename);
+  };
+
+  const downloadAllAsExcel = () => {
+    if (!comparisonResult) return;
+
+    const workbook = XLSX.utils.book_new();
+
+    // Helper function to create worksheet data
+    const createWorksheetData = (data: ExcelRow[], type: 'modified' | 'canceled' | 'unchanged') => {
+      const worksheetData: (string | number | boolean)[][] = [];
+
+      if (type === 'modified') {
+        // For modified items, create side-by-side comparison
+        const pairs: { old: ExcelRow; new: ExcelRow }[] = [];
+        for (let i = 0; i < data.length; i += 2) {
+          if (data[i]._status === 'OLD' && data[i + 1]?._status === 'NEW') {
+            pairs.push({ old: data[i], new: data[i + 1] });
+          }
+        }
+
+        worksheetData.push([
+          'Seq.',
+          'Description',
+          'Code',
+          'Quantity (Old)',
+          'Quantity (New)',
+          'Unit Price (Old)',
+          'Unit Price (New)',
+          'Amount (Old)',
+          'Amount (New)',
+          'Notes'
+        ]);
+
+        pairs.forEach(pair => {
+          worksheetData.push([
+            pair.old['Seq.'] ?? '',
+            pair.old.Description ?? '',
+            pair.old.Code ?? '',
+            extractQuantityWithUnit(pair.old.Quantity),
+            extractQuantityWithUnit(pair.new.Quantity),
+            pair.old['Unit Price'] ?? '',
+            pair.new['Unit Price'] ?? '',
+            pair.old.Amount ?? '',
+            pair.new.Amount ?? '',
+            pair.old.Ideal_Price ?? ''
+          ]);
+        });
+
+        return {
+          data: worksheetData,
+          colWidths: [
+            { wch: 8 }, { wch: 30 }, { wch: 25 }, { wch: 12 }, { wch: 12 },
+            { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 15 }
+          ]
+        };
+      } else {
+        worksheetData.push(['Seq.', 'Description', 'Code', 'Quantity', 'Unit Price', 'Amount']);
+        
+        data.forEach(row => {
+          worksheetData.push([
+            row['Seq.'] ?? '',
+            row.Description ?? '',
+            row.Code ?? '',
+            extractQuantityWithUnit(row.Quantity),
+            row['Unit Price'] ?? '',
+            row.Amount ?? ''
+          ]);
+        });
+
+        return {
+          data: worksheetData,
+          colWidths: [
+            { wch: 8 }, { wch: 30 }, { wch: 25 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
+          ]
+        };
+      }
+    };
+
+    // Create Modified Items sheet
+    if (comparisonResult.edited.length > 0) {
+      const modifiedData = createWorksheetData(comparisonResult.edited, 'modified');
+      const modifiedSheet = XLSX.utils.aoa_to_sheet(modifiedData.data);
+      modifiedSheet['!cols'] = modifiedData.colWidths;
+      XLSX.utils.book_append_sheet(workbook, modifiedSheet, 'Modified Items');
+    }
+
+    // Create Deleted Items sheet
+    if (comparisonResult.canceled.length > 0) {
+      const canceledData = createWorksheetData(comparisonResult.canceled, 'canceled');
+      const canceledSheet = XLSX.utils.aoa_to_sheet(canceledData.data);
+      canceledSheet['!cols'] = canceledData.colWidths;
+      XLSX.utils.book_append_sheet(workbook, canceledSheet, 'Deleted Items');
+    }
+
+    // Create Unchanged Items sheet
+    if (comparisonResult.noChange.length > 0) {
+      const unchangedData = createWorksheetData(comparisonResult.noChange, 'unchanged');
+      const unchangedSheet = XLSX.utils.aoa_to_sheet(unchangedData.data);
+      unchangedSheet['!cols'] = unchangedData.colWidths;
+      XLSX.utils.book_append_sheet(workbook, unchangedSheet, 'Unchanged Items');
+    }
+
+    // Download the file
+    const timestamp = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(workbook, `Excel_Comparison_Report_${timestamp}.xlsx`);
   };
 
   const createCompositeKey = (row: ExcelRow): string => {
@@ -362,77 +613,118 @@ const Dashboard: React.FC = () => {
       return <div className="no-data">No items found in this category</div>;
     }
 
-    // Filter out internal columns like _status and _changeType
-    const allColumns = Object.keys(data[0]);
-    const filteredColumns = allColumns.filter(col => !col.startsWith('_'));
-    
-    // Define the desired column order: Seq., Description, Code, Quantity, Unit Price, Amount
-    const columnOrder = ['Seq.', 'Description', 'Code', 'Quantity', 'Unit Price', 'Amount'];
-    const columns = columnOrder.filter(col => filteredColumns.includes(col));
-
-    // For edited items, we need to compare pairs
+    // For edited items, we need to show side-by-side comparison
     const isEditedView = activeView === 'edited';
 
-    const getCellClassName = (row: ExcelRow, col: string, nextRow?: ExcelRow): string => {
-      if (!isEditedView || !nextRow) return '';
-      
-      // Compare this row with the next row (OLD vs NEW pair)
-      const isOldRow = row._status === 'OLD';
-      if (!isOldRow) return '';
+    if (isEditedView) {
+      // Group OLD and NEW pairs together
+      const pairs: { old: ExcelRow; new: ExcelRow }[] = [];
+      for (let i = 0; i < data.length; i += 2) {
+        if (data[i]._status === 'OLD' && data[i + 1]?._status === 'NEW') {
+          pairs.push({ old: data[i], new: data[i + 1] });
+        }
+      }
 
-      const oldValue = String(row[col] ?? '').trim();
-      const newValue = String(nextRow[col] ?? '').trim();
+      return (
+        <div className="table-container">
+          <table className="comparison-table comparison-table-sidebyside">
+            <thead>
+              <tr>
+                <th className="seq-column">SEQ.</th>
+                <th className="description-column">DESCRIPTION</th>
+                <th className="code-column">CODE</th>
+                <th className="comparison-header" colSpan={2}>QUANTITY</th>
+                <th className="comparison-header" colSpan={2}>UNIT PRICE</th>
+                <th className="comparison-header" colSpan={2}>AMOUNT</th>
+                <th className="ideal-price-column">NOTES</th>
+              </tr>
+              <tr className="subheader">
+                <th></th>
+                <th></th>
+                <th></th>
+                <th className="old-subheader">Old</th>
+                <th className="new-subheader">New</th>
+                <th className="old-subheader">Old</th>
+                <th className="new-subheader">New</th>
+                <th className="old-subheader">Old</th>
+                <th className="new-subheader">New</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {pairs.map((pair, index) => {
+                const qtyChanged = normalizeValue(pair.old.Quantity) !== normalizeValue(pair.new.Quantity);
+                const priceChanged = normalizeValue(pair.old['Unit Price']) !== normalizeValue(pair.new['Unit Price']);
+                const amountChanged = normalizeValue(pair.old.Amount) !== normalizeValue(pair.new.Amount);
 
-      return oldValue !== newValue ? 'cell-changed' : '';
-    };
+                return (
+                  <tr key={index}>
+                    <td>{pair.old['Seq.']}</td>
+                    <td>{pair.old.Description}</td>
+                    <td>{pair.old.Code}</td>
+                    <td className={qtyChanged ? 'cell-changed-old' : ''}>
+                      {extractQuantityWithUnit(pair.old.Quantity)}
+                    </td>
+                    <td className={qtyChanged ? 'cell-changed-new' : ''}>
+                      {extractQuantityWithUnit(pair.new.Quantity)}
+                    </td>
+                    <td className={priceChanged ? 'cell-changed-old' : ''}>
+                      {pair.old['Unit Price']}
+                    </td>
+                    <td className={priceChanged ? 'cell-changed-new' : ''}>
+                      {pair.new['Unit Price']}
+                    </td>
+                    <td className={amountChanged ? 'cell-changed-old' : ''}>
+                      {pair.old.Amount}
+                    </td>
+                    <td className={amountChanged ? 'cell-changed-new' : ''}>
+                      {pair.new.Amount}
+                    </td>
+                    <td className="ideal-price-cell">
+                      {pair.old.Ideal_Price ? (
+                        <span className="ideal-price-note">{pair.old.Ideal_Price}</span>
+                      ) : ''}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // For non-edited views (canceled, noChange), show normal table
+    const allColumns = Object.keys(data[0]);
+    const filteredColumns = allColumns.filter(col => !col.startsWith('_') && col !== 'Ideal_Price');
+    const columnOrder = ['Seq.', 'Description', 'Code', 'Quantity', 'Unit Price', 'Amount'];
+    const columns = columnOrder.filter(col => filteredColumns.includes(col));
 
     return (
       <div className="table-container">
         <table className="comparison-table">
           <thead>
             <tr>
-              {isEditedView && <th className="status-column">Status</th>}
               {columns.map((col) => (
                 <th key={col}>{col}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {data.map((row, index) => {
-              const nextRow = data[index + 1];
-              const rowClassName = row._status && typeof row._status === 'string' 
-                ? `row-${row._status.toLowerCase()}` 
-                : '';
-
-              return (
-                <tr key={index} className={rowClassName}>
-                  {isEditedView && (
-                    <td className="status-column">
-                      <span className={`status-badge ${typeof row._status === 'string' ? row._status.toLowerCase() : ''}`}>
-                        {row._status === 'OLD' ? '📋 Old' : '✨ New'}
-                      </span>
-                    </td>
-                  )}
-                  {columns.map((col) => {
-                    let cellValue = String(row[col] ?? '');
-                    
-                    // Remove "PCS" from Quantity column display
-                    if (col === 'Quantity') {
-                      cellValue = cellValue.replace(/\s*PCS\s*/gi, '').trim();
-                    }
-                    
-                    return (
-                      <td 
-                        key={col} 
-                        className={getCellClassName(row, col, nextRow)}
-                      >
-                        {cellValue}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
+            {data.map((row, index) => (
+              <tr key={index}>
+                {columns.map((col) => {
+                  let cellValue = String(row[col] ?? '');
+                  
+                  // For Quantity column, preserve the unit (PCS, PC, SETS, etc.)
+                  if (col === 'Quantity') {
+                    cellValue = extractQuantityWithUnit(row[col]);
+                  }
+                  
+                  return <td key={col}>{cellValue}</td>;
+                })}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -584,6 +876,12 @@ const Dashboard: React.FC = () => {
                 <span className="stat-text">Unchanged</span>
               </div>
             </div>
+            <button className="download-all-btn" onClick={downloadAllAsExcel}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download Complete Report (All 3 Sheets)
+            </button>
           </div>
         )}
 
@@ -629,11 +927,31 @@ const Dashboard: React.FC = () => {
             {activeView && (
               <div className="results-section">
                 <div className="results-header">
-                  <h2>
-                    {activeView === 'canceled' && '🗑️ Deleted Items'}
-                    {activeView === 'edited' && '✏️ Modified Items'}
-                    {activeView === 'noChange' && '✅ Unchanged Items'}
-                  </h2>
+                  <div className="results-title-row">
+                    <h2>
+                      {activeView === 'canceled' && '🗑️ Deleted Items'}
+                      {activeView === 'edited' && '✏️ Modified Items'}
+                      {activeView === 'noChange' && '✅ Unchanged Items'}
+                    </h2>
+                    <button 
+                      className="download-excel-btn"
+                      onClick={() => {
+                        const timestamp = new Date().toISOString().split('T')[0];
+                        if (activeView === 'canceled') {
+                          downloadAsExcel(comparisonResult.canceled, `Deleted_Items_${timestamp}.xlsx`, 'canceled');
+                        } else if (activeView === 'edited') {
+                          downloadAsExcel(comparisonResult.edited, `Modified_Items_${timestamp}.xlsx`, 'modified');
+                        } else {
+                          downloadAsExcel(comparisonResult.noChange, `Unchanged_Items_${timestamp}.xlsx`, 'unchanged');
+                        }
+                      }}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Download Excel
+                    </button>
+                  </div>
                   <p className="results-description">
                     {activeView === 'canceled' && 
                       'Items where BOTH Seq. AND Description from the old file are not found in the new file (deleted items).'}
