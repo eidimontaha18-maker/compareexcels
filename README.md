@@ -1,73 +1,89 @@
-# React + TypeScript + Vite
+# Compare Excels - Excel File Comparison Tool
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A powerful React-based web application to compare two Excel files and identify differences between them.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 📊 **Smart Comparison**: Matches items by Seq. + Description
+- 🔍 **Change Detection**: Identifies changes in Quantity, Unit Price, and Amount
+- 📋 **Three Categories**: 
+  - **Deleted**: Items removed from the new file
+  - **Modified**: Items with changed values
+  - **Unchanged**: Items that remain identical
+- 🎨 **Beautiful UI**: Modern, intuitive interface with visual highlighting
+- ⚡ **Fast Processing**: Built with React + TypeScript + Vite
+- 📱 **Responsive Design**: Works on desktop and mobile devices
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **React 18** with TypeScript
+- **Vite** for fast development and building
+- **XLSX** library for Excel file processing
+- Modern CSS with beautiful UI components
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Node.js (v16 or higher)
+- npm or yarn
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Installation
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# Clone the repository
+git clone https://github.com/eidimontaha18-maker/compareExcels.git
+
+# Navigate to project directory
+cd compareExcels
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The application will be available at `http://localhost:5173`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Build for Production
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+## How It Works
+
+1. **Upload Files**: Upload your old and new Excel files
+2. **Automatic Processing**: The tool automatically:
+   - Detects headers (Seq., Description, Code, Quantity, Unit Price, Amount)
+   - Handles variations in column names (Qty vs Quantity)
+   - Normalizes values (removes "PCS" suffix, handles numeric comparisons)
+3. **View Results**: Browse categorized results:
+   - Items that were deleted
+   - Items that were modified (with highlighted changes)
+   - Items that remain unchanged
+
+## Column Mapping
+
+The tool automatically handles:
+- **Seq** / **Seq.** → Sequence number
+- **Description** / **Desc** → Item description
+- **Code** → Part numbers (handles empty column headers)
+- **Qty** / **Quantity** → Quantity (normalizes "8 PCS" to "8")
+- **Unit Price** → Price per unit
+- **Amount** → Total amount
+
+## Documentation
+
+- [User Guide](USER_GUIDE.md) - Detailed usage instructions
+- [Excel Comparison Guide](EXCEL_COMPARISON_GUIDE.md) - Understanding the comparison logic
+- [Quick Reference](QUICK_REFERENCE.md) - Quick tips and shortcuts
+
+## License
+
+MIT License
+
+## Author
+
+Created by Eidimontaha18
